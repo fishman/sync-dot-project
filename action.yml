@@ -1,4 +1,4 @@
-name: cncf-sync-dot-project
+name: sync-dot-project
 description: >-
   Sync dot-project files to every repo in an org: static community files from
   repo-file-sync.yml plus per-repo OWNERS and CONTRIBUTING.md generated from

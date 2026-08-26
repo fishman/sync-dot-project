@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: your-org/cncf-sync-dot-project@main
+      - uses: your-org/sync-dot-project@main
         with:
           org: my-org
           token: ${{ secrets.ORG_PAT }}

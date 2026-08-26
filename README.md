@@ -1,4 +1,4 @@
-# cncf-sync-dot-project
+# sync-dot-project
 
 A single reusable GitHub Action that syncs a CNCF project's dot-project files to
 every repo in its org. One action, one dry-run-by-default pass:
@@ -12,7 +12,7 @@ every repo in its org. One action, one dry-run-by-default pass:
 ## Usage
 
 ```yaml
-- uses: your-org/cncf-sync-dot-project@main
+- uses: your-org/sync-dot-project@main
   with:
     org: my-org
     token: ${{ secrets.ORG_PAT }}
