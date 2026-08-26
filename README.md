@@ -75,3 +75,20 @@ and a `CONTRIBUTING.md` rendered from the template with `placeholder` replaced b
 `{org}/{repo}`.
 
 See `example/` for starter files to copy and fill in.
+
+## Limitations
+
+The OWNERS generator writes the simple flat form only (`approvers:` /
+`reviewers:` sections). Complex OWNERS files are not regenerated:
+
+- **`filters:` blocks** (regex-scoped rules, as used at the root of
+  kubernetes/kubernetes) - the sync detects these and leaves the file alone
+  rather than overwriting it with a flat one. Verified against
+  `kubernetes/kubernetes` OWNERS in `test/`.
+- **`OWNERS_ALIASES`** resolution - members must be literal usernames in
+  `maintainers.yaml`, not alias references. Alias references, wildcards, and
+  nested keys are flagged as complex and skipped.
+
+A target repo with a complex OWNERS is detected and reported as "skipping, not
+touching"; the file is never overwritten. Generating complex OWNERS is not
+supported yet.

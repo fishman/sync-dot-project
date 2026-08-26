@@ -10,6 +10,7 @@ live repos, pushes nothing. Pass --push to write. Pushing requires GH_TOKEN.
 """
 import argparse
 import base64
+import difflib
 import os
 import subprocess
 import sys
@@ -43,6 +44,28 @@ def put_file(org, repo, branch, path, content):
          "-f", f"branch={branch}"],
         capture_output=True, text=True, check=True,
     )
+
+
+def is_simple_owners(remote):
+    """True if the remote OWNERS is the flat role->usernames form we can
+    regenerate. Anything else (filters, aliases, wildcards, nested keys) is
+    complex and must not be overwritten."""
+    if remote is None:
+        return True
+    for line in remote.splitlines():
+        s = line.rstrip()
+        if not s.strip() or s.strip().startswith("#"):
+            continue
+        if not line.startswith(" "):
+            if not s.endswith(":") or not s.strip().rstrip(":").isidentifier():
+                return False
+        else:
+            if not s.lstrip().startswith("- "):
+                return False
+            member = s.lstrip()[2:].strip()
+            if not member or "/" in member or "*" in member or member.endswith(":"):
+                return False
+    return True
 
 
 def parse_owners(text):
@@ -145,6 +168,9 @@ def main():
     for op in plan(maintainers, static, tmpl, args.org, args.placeholder):
         print(f"{op.org}/{op.repo} {op.path}:")
         cur = gh_content(op.org, op.repo, args.branch, op.path)
+        if op.members is not None and not is_simple_owners(cur):
+            print("  complex OWNERS (filters/aliases/wildcards) - skipping, not touching")
+            continue
         if cur == op.content:
             print("  no change")
             continue
@@ -152,7 +178,12 @@ def main():
             if op.members is not None:
                 print("  " + owners_diff(op.members, cur))
             else:
-                print("  would change")
+                print("  would change:")
+                for line in difflib.unified_diff(
+                        (cur or "").splitlines(), op.content.splitlines(),
+                        fromfile=f"{op.path} (current)",
+                        tofile=f"{op.path} (merged)", lineterm=""):
+                    print(f"    {line}")
         else:
             put_file(op.org, op.repo, args.branch, op.path, op.content)
             print("  pushed")
