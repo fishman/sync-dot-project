@@ -1,0 +1,53 @@
+name: cncf-sync-dot-project
+description: >-
+  Sync dot-project files to every repo in an org: static community files from
+  repo-file-sync.yml plus per-repo OWNERS and CONTRIBUTING.md generated from
+  maintainers.yaml. Dry-run by default - logs diffs without writing or pushing.
+inputs:
+  org:
+    description: GitHub org whose repos receive the files
+    required: true
+  token:
+    description: >-
+      PAT with contents write access to the target repos. Always pass a
+      repository or org secret (e.g. ${{ secrets.ORG_PAT }}) - never a literal
+      value. Fed to the script as GH_TOKEN.
+    required: true
+  static-config:
+    description: Path to the static file-sync config (group/files/repos), relative to the repo root
+    default: repo-file-sync.yml
+  maintainers-file:
+    description: Path to the maintainers roster, relative to the repo root
+    default: maintainers.yaml
+  contributing-template:
+    description: Path to the CONTRIBUTING.md template, relative to the repo root
+    default: CONTRIBUTING.md
+  placeholder:
+    description: String in the template replaced with {org}/{repo}
+    default: Project-HAMi/.project
+  branch:
+    description: Branch to push the generated files to
+    default: main
+  dry-run:
+    description: Log diffs against the live repos without writing or pushing
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Sync dot-project files
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        pip install pyyaml
+        args=(--org "${{ inputs.org }}"
+              --static-config "${{ inputs.static-config }}"
+              --maintainers "${{ inputs.maintainers-file }}"
+              --template "${{ inputs.contributing-template }}"
+              --placeholder "${{ inputs.placeholder }}"
+              --branch "${{ inputs.branch }}")
+        [ "${{ inputs.dry-run }}" = "false" ] && args+=(--push)
+        python3 "${{ github.action_path }}/sync.py" "${args[@]}"

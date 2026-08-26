@@ -1,0 +1,14 @@
+# Static community files synced to every repo listed below.
+# Copy to your dot-project repo root. OWNERS/CONTRIBUTING come from maintainers.yaml.
+
+group:
+  - files:
+      - source: LICENSE
+        dest: LICENSE
+      - source: CODE_OF_CONDUCT.md
+        dest: CODE_OF_CONDUCT.md
+      - source: SECURITY.md
+        dest: SECURITY.md
+    repos:
+      - my-org/repo-a
+      - my-org/repo-b

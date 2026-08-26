@@ -1,0 +1,28 @@
+# Example workflow: run the sync on every push to the dot-project repo.
+# Copy to .github/workflows/sync.yml in your dot-project repo.
+# The token MUST be a secret - never inline a literal.
+
+name: Sync Dot-Project
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: your-org/cncf-sync-dot-project@main
+        with:
+          org: my-org
+          token: ${{ secrets.ORG_PAT }}
+          # set dry-run: false once you've reviewed a dry-run log
