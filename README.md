@@ -31,7 +31,7 @@ writes and pushes nothing. Set `dry-run: false` to actually push.
 | `static-config` | `repo-file-sync.yml` | Static file-sync config (group/files/repos) |
 | `maintainers-file` | `maintainers.yaml` | Maintainer roster |
 | `contributing-template` | `CONTRIBUTING.md` | CONTRIBUTING template |
-| `placeholder` | `Project-HAMi/.project` | String in the template replaced with `{org}/{repo}` |
+| `placeholder` | `` (disabled) | Legacy: set to a literal `{org}/{repo}` string if your template hardcodes one (e.g. `Project-HAMi/.project`); prefer `@ORG@/@REPO@` |
 | `branch` | `main` | Branch to push to |
 | `dry-run` | `true` | Log diffs without writing or pushing |
 
@@ -70,9 +70,34 @@ maintainers:
           - carol
 ```
 
+`CONTRIBUTING.md` (template - one file, served to every repo):
+
+```markdown
+# Contributing
+
+Issues and PRs live at https://github.com/@ORG@/@REPO@
+```
+
 Each repo gets an `OWNERS` with a section per team (minus `project-maintainers`),
-and a `CONTRIBUTING.md` rendered from the template with `placeholder` replaced by
-`{org}/{repo}`.
+and a `CONTRIBUTING.md` rendered from the template.
+
+## Variables (preferred by default)
+
+Templates use `@ORG@` / `@REPO@` by default. They are substituted from the
+action parameters (`org` input, and the roster's `project_id` per repo) in the
+CONTRIBUTING template and in `repo-file-sync.yml` (repo list and source/dest
+paths), so one template serves every repo:
+
+```markdown
+Issues live at https://github.com/@ORG@/@REPO@/issues
+```
+
+Rendered per repo: `https://github.com/my-org/repo-a/issues`.
+
+If you are migrating an existing template that hardcodes a literal `{org}/{repo}`
+string (e.g. `Project-HAMi/.project`), set the `placeholder` input to that
+string to keep it working without editing the template. It is disabled by
+default - new templates use `@ORG@/@REPO@`.
 
 See `example/` for starter files to copy and fill in.
 

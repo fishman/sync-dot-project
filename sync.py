@@ -120,6 +120,11 @@ class Op:
         self.members = members  # filtered role dict for OWNERS ops, else None
 
 
+def render(text, org, repo, placeholder):
+    out = text.replace("@ORG@", org).replace("@REPO@", repo)
+    return out.replace(placeholder, f"{org}/{repo}") if placeholder else out
+
+
 def plan(maintainers, static, tmpl, org_default, placeholder):
     ops = []
     for entry in maintainers.get("maintainers", []):
@@ -131,14 +136,15 @@ def plan(maintainers, static, tmpl, org_default, placeholder):
         if owners.strip():
             ops.append(Op(org, repo, "OWNERS", owners, members=local))
         ops.append(Op(org, repo, "CONTRIBUTING.md",
-                      tmpl.replace(placeholder, f"{org}/{repo}")))
+                      render(tmpl, org, repo, placeholder)))
     for group in static.get("group", []):
         for repo_str in group["repos"]:
-            org, _, repo = repo_str.partition("/")
+            org, _, repo = render(repo_str, org_default, "", placeholder).partition("/")
             for f in group["files"]:
-                src = Path(f["source"])
+                src = Path(render(f["source"], org, repo, placeholder))
                 if src.exists():
-                    ops.append(Op(org, repo, f["dest"], src.read_text()))
+                    ops.append(Op(org, repo, render(f["dest"], org, repo, placeholder),
+                                  src.read_text()))
     return ops
 
 

@@ -23,8 +23,11 @@ inputs:
     description: Path to the CONTRIBUTING.md template, relative to the repo root
     default: CONTRIBUTING.md
   placeholder:
-    description: String in the template replaced with {org}/{repo}
-    default: Project-HAMi/.project
+    description: >-
+      Legacy fallback: a literal string in the template replaced with
+      {org}/{repo}, for templates that hardcode one (e.g. Project-HAMi/.project).
+      Prefer the @ORG@/@REPO@ variables. Disabled by default.
+    default: ''
   branch:
     description: Branch to push the generated files to
     default: main

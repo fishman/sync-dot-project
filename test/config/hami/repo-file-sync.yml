@@ -1,0 +1,11 @@
+# Static community files for the Project-HAMi/HAMi scenario. Sources point at
+# the committed fixture (the real HAMi dot-project files). Paths relative to test/.
+
+group:
+  - files:
+      - source: fixtures/Project-HAMi-HAMi/CODE_OF_CONDUCT.md
+        dest: CODE_OF_CONDUCT.md
+      - source: fixtures/Project-HAMi-HAMi/SECURITY.md
+        dest: SECURITY.md
+    repos:
+      - Project-HAMi/HAMi
