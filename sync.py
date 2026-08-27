@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Sync dot-project files to every repo in an org.
+"""Sync a CNCF project's dot-project files into this repo from a source.
 
-Two jobs in one pass:
-  1. Static community files from repo-file-sync.yml (group/files/repos).
-  2. Per-repo OWNERS + CONTRIBUTING.md generated from maintainers.yaml.
+Pull model, not push: reads a sync-dot-project.yml config (a source repo
+org/repo@branch plus a list of files), fetches those files from the source,
+generates OWNERS (from the source's maintainers.yaml, filtered to this repo)
+and CONTRIBUTING.md (rendered from the source template), and writes them into
+the working tree. A peter-evans/create-pull-request step then proposes the
+changes as a reviewed PR. Dry-run by default: the script logs what would
+change, the action opens nothing.
 
-Dry-run by default: logs member additions/removals and file diffs against the
-live repos, pushes nothing. Pass --push to write. Pushing requires GH_TOKEN.
+A complex OWNERS in this repo (filters, aliases, wildcards) is left alone,
+never overwritten.
 """
 import argparse
 import base64
-import difflib
 import os
 import subprocess
 import sys
@@ -36,23 +39,19 @@ def gh_content(org, repo, branch, path):
         return None
 
 
-def put_file(org, repo, branch, path, content):
-    url = f"repos/{org}/{repo}/contents/{path}"
-    subprocess.run(
-        ["gh", "api", url, "-X", "PUT", "-f", "message=sync: update {path}",
-         "-f", f"content={base64.b64encode(content.encode()).decode()}",
-         "-f", f"branch={branch}"],
-        capture_output=True, text=True, check=True,
-    )
+def parse_source(source):
+    org, _, rest = source.partition("/")
+    repo, _, branch = rest.partition("@")
+    return org, repo, branch or "main"
 
 
-def is_simple_owners(remote):
-    """True if the remote OWNERS is the flat role->usernames form we can
-    regenerate. Anything else (filters, aliases, wildcards, nested keys) is
-    complex and must not be overwritten."""
-    if remote is None:
+def is_simple_owners(text):
+    """True if the OWNERS is the flat role->usernames form we can regenerate.
+    Anything else (filters, aliases, wildcards, nested keys) is complex and
+    must not be overwritten."""
+    if text is None:
         return True
-    for line in remote.splitlines():
+    for line in text.splitlines():
         s = line.rstrip()
         if not s.strip() or s.strip().startswith("#"):
             continue
@@ -90,109 +89,81 @@ def gen_owners(local):
     return "\n".join(lines) + "\n"
 
 
-def owners_diff(local, remote):
-    if remote is None:
-        return f"OWNERS: new file ({sum(map(len, local.values()))} members)"
-    remote_roles = parse_owners(remote)
-    out = []
-    for role, members in local.items():
-        cur = remote_roles.get(role, [])
-        add = [m for m in members if m not in cur]
-        rem = [m for m in cur if m not in members]
-        if add:
-            out.append(f"  {role} +{', +'.join(add)}")
-        if rem:
-            out.append(f"  {role} -{', -'.join(rem)}")
-    for role, cur in remote_roles.items():
-        if role not in local and cur:
-            out.append(f"  {role} -{', -'.join(cur)} (whole role removed)")
-    return "\n".join(out) if out else "OWNERS: no change"
-
-
-class Op:
-    __slots__ = ("org", "repo", "path", "content", "members")
-
-    def __init__(self, org, repo, path, content, members=None):
-        self.org = org
-        self.repo = repo
-        self.path = path
-        self.content = content
-        self.members = members  # filtered role dict for OWNERS ops, else None
-
-
 def render(text, org, repo, placeholder):
     out = text.replace("@ORG@", org).replace("@REPO@", repo)
     return out.replace(placeholder, f"{org}/{repo}") if placeholder else out
 
 
-def plan(maintainers, static, tmpl, org_default, placeholder):
-    ops = []
-    for entry in maintainers.get("maintainers", []):
-        repo = entry["project_id"]
-        org = entry.get("org", org_default)
-        teams = {t["name"]: t.get("members", []) for t in entry.get("teams", [])}
+def generate(config, src_org, src_repo, branch, this_org, this_repo,
+             placeholder, fetch, cur_owners):
+    """Return (ops, skipped): ops is a list of (path, content) to write, skipped
+    lists OWNERS paths left alone because the current file is complex."""
+    files = config.get("files", [])
+    ops, skipped = [], []
+
+    local = {}
+    if "OWNERS" in files:
+        src = fetch(src_org, src_repo, branch, "maintainers.yaml") or ""
+        roster = yaml.safe_load(src) or {}
+        entry = next((e for e in roster.get("maintainers", [])
+                      if e.get("project_id") == this_repo), {})
+        teams = {t["name"]: t.get("members", [])
+                 for t in entry.get("teams", [])}
         local = {k: v for k, v in teams.items() if k not in SKIP_TEAMS}
-        owners = gen_owners(local)
-        if owners.strip():
-            ops.append(Op(org, repo, "OWNERS", owners, members=local))
-        ops.append(Op(org, repo, "CONTRIBUTING.md",
-                      render(tmpl, org, repo, placeholder)))
-    for group in static.get("group", []):
-        for repo_str in group["repos"]:
-            org, _, repo = render(repo_str, org_default, "", placeholder).partition("/")
-            for f in group["files"]:
-                src = Path(render(f["source"], org, repo, placeholder))
-                if src.exists():
-                    ops.append(Op(org, repo, render(f["dest"], org, repo, placeholder),
-                                  src.read_text()))
-    return ops
+
+    for path in files:
+        if path == "OWNERS":
+            if cur_owners is not None and not is_simple_owners(cur_owners):
+                skipped.append(path)
+                continue
+            content = gen_owners(local)
+            if content.strip():
+                ops.append((path, content))
+        elif path == "CONTRIBUTING.md":
+            tmpl = fetch(src_org, src_repo, branch, "CONTRIBUTING.md")
+            if tmpl is not None:
+                ops.append((path, render(tmpl, this_org, this_repo, placeholder)))
+        else:
+            content = fetch(src_org, src_repo, branch, path)
+            if content is not None:
+                ops.append((path, content))
+    return ops, skipped
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--org", required=True, help="default GitHub org")
-    parser.add_argument("--static-config", default="repo-file-sync.yml")
-    parser.add_argument("--maintainers", default="maintainers.yaml")
-    parser.add_argument("--template", default="CONTRIBUTING.md")
-    parser.add_argument("--placeholder", default="Project-HAMi/.project",
-                        help="string in the template replaced with {org}/{repo}")
-    parser.add_argument("--branch", default="main")
-    parser.add_argument("--push", action="store_true",
-                        help="actually push (dry-run is the default)")
+    parser.add_argument("--config", default="sync-dot-project.yml")
+    parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY"))
+    parser.add_argument("--placeholder", default="")
     args = parser.parse_args()
 
-    maintainers = yaml.safe_load(Path(args.maintainers).read_text()) or {}
-    static = {}
-    if Path(args.static_config).exists():
-        static = yaml.safe_load(Path(args.static_config).read_text()) or {}
-    tmpl = Path(args.template).read_text()
-
-    if args.push and not os.environ.get("GH_TOKEN"):
-        print("GH_TOKEN required to push", file=sys.stderr)
+    config = yaml.safe_load(Path(args.config).read_text()) or {}
+    if not args.repo or "/" not in args.repo:
+        print("GITHUB_REPOSITORY (org/repo) not set and --repo not given",
+              file=sys.stderr)
         sys.exit(1)
+    this_org, _, this_repo = args.repo.partition("/")
+    src_org, src_repo, branch = parse_source(config["source"])
 
-    for op in plan(maintainers, static, tmpl, args.org, args.placeholder):
-        print(f"{op.org}/{op.repo} {op.path}:")
-        cur = gh_content(op.org, op.repo, args.branch, op.path)
-        if op.members is not None and not is_simple_owners(cur):
-            print("  complex OWNERS (filters/aliases/wildcards) - skipping, not touching")
+    cur_owners = None
+    if Path("OWNERS").exists():
+        cur_owners = Path("OWNERS").read_text()
+
+    ops, skipped = generate(config, src_org, src_repo, branch,
+                            this_org, this_repo, args.placeholder,
+                            gh_content, cur_owners)
+
+    for _ in skipped:
+        print("OWNERS: complex (filters/aliases/wildcards) - skipping, not touching")
+    for path, content in ops:
+        target = Path(path)
+        if target.exists() and target.read_text() == content:
+            print(f"{path}: no change")
             continue
-        if cur == op.content:
-            print("  no change")
-            continue
-        if not args.push:
-            if op.members is not None:
-                print("  " + owners_diff(op.members, cur))
-            else:
-                print("  would change:")
-                for line in difflib.unified_diff(
-                        (cur or "").splitlines(), op.content.splitlines(),
-                        fromfile=f"{op.path} (current)",
-                        tofile=f"{op.path} (merged)", lineterm=""):
-                    print(f"    {line}")
-        else:
-            put_file(op.org, op.repo, args.branch, op.path, op.content)
-            print("  pushed")
+        existed = target.exists()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+        print(f"{path}: {'new' if not existed else 'changed'}")
 
 
 if __name__ == "__main__":

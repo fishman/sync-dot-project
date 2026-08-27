@@ -1,0 +1,14 @@
+# Pull dot-project files from a source repo into this repo via a reviewed PR.
+# Copy to the root of each repo you want synced, then edit source and files.
+# The source repo holds the canonical files: maintainers.yaml, a CONTRIBUTING.md
+# template (using @ORG@/@REPO@), LICENSE, CODE_OF_CONDUCT.md, SECURITY.md.
+# OWNERS and CONTRIBUTING.md are generated from the source; every other file is
+# copied verbatim.
+
+source: my-org/dot-project@main
+files:
+  - LICENSE
+  - CODE_OF_CONDUCT.md
+  - SECURITY.md
+  - OWNERS
+  - CONTRIBUTING.md

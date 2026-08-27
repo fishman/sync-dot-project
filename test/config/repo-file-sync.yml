@@ -1,9 +1,0 @@
-# Static file sync, driven by the test harness against kubernetes/kubernetes.
-# Source paths are relative to test/ (the harness chdirs there).
-
-group:
-  - files:
-      - source: config/LICENSE
-        dest: LICENSE
-    repos:
-      - kubernetes/kubernetes

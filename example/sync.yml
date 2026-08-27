@@ -1,28 +1,23 @@
-# Example workflow: run the sync on every push to the dot-project repo.
-# Copy to .github/workflows/sync.yml in your dot-project repo.
-# The token MUST be a secret - never inline a literal.
+# Example workflow: propose dot-project file syncs to THIS repo from a source.
+# Copy to .github/workflows/sync.yml in each repo you want synced.
+# GITHUB_TOKEN is repo-scoped - no org-wide secret needed.
 
 name: Sync Dot-Project
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "0 7 * * 1"   # weekly, Monday 07:00
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: your-org/sync-dot-project@v1
         with:
-          persist-credentials: false
-      - uses: your-org/sync-dot-project@main
-        with:
-          org: my-org
-          token: ${{ secrets.ORG_PAT }}
+          config: sync-dot-project.yml
           # set dry-run: false once you've reviewed a dry-run log
